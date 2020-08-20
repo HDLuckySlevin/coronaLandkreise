@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <link
+      rel="stylesheet"
+      href="https://js.arcgis.com/4.16/esri/themes/light/main.css"
+    />
+    <script src="https://js.arcgis.com/4.16/"></script>
+    <meta name="author" content="Philippe Müller">
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="initial-scale=1, maximum-scale=1, user-scalable=no"
+    />
+    <title>FH-Dortmund MAE Corona-Fallzahlen</title>
+    <style>
+      html,
+      body,
+      #viewDiv {
+        padding: 0;
+        margin: 0;
+        height: 100%;
+        width: 100%;
+      }
+    </style>
+    <script>
+      /*
+        RKI Corona-Landkreise für MAE
+        Autor: Philippe Müller
+      */
+      require([
+        "esri/Map",
+        "esri/views/MapView",
+        "esri/layers/FeatureLayer",
+        "esri/Graphic",
+        "esri/geometry/geometryEngine",
+      ], function (Map, MapView, FeatureLayer, Graphic, geometryEngine) {
+        const defaultSym = {
+          type: "simple-fill", // autocasts as new SimpleFillSymbol()
+          outline: {
+            // autocasts as new SimpleLineSymbol()
+            color: [128, 128, 128, 0.2],
+            //width: "0.5px"
+          },
+        };
+        const defaultSym2 = {
+          type: "simple-fill", // autocasts as new SimpleFillSymbol()
+          outline: {
+            // autocasts as new SimpleLineSymbol()
+            color: [0, 0, 0, 1],
+            width: "1.5px",
+          },
+        };
+
+        var map = new Map({
+          //keine basemap = nur die Infos aus dem FeatureKLayer nehmen, sonst eigene Basemap nutzen
+          //basemap: "topo",
+        });
+
+        var view = new MapView({
+          container: "viewDiv",
+          map: map,
+          //center: [12.9079, 50.40724],
+          //zoom: 7,
+        });
+
+        var rundenThisAction = {
+          title: "Runden",
+          id: "runden",
+        };
+
+        var popupTrailheads = {
+          title: "Corona-Fallzahlen für {county}",
+          id: "runden",
+          actions: [rundenThisAction],
+          content:
+            "<b>Aktualisiert:</b> {last_update}<br>" +
+            "<b>Bezeichnung:</b> {GEN}<br>" +
+            "<b>Einwohner:</b> {EWZ}<br>" +
+            "<b>Anzahl Fälle:</b> {cases}<br>" +
+            "<b>Fälle/100.000 EW:</b> {cases_per_100k}<br>" +
+            "<b>Betroffenenrate:</b> {cases_per_population}<br>" +
+            "<b>Sterberate:</b> <% %> {death_rate} <%%><br>" +
+            "<b>Fälle letzten 7 Tage/100.000 EW:</b> {cases7_per_100k}<br>",
+          //"<b>Genese</b> {recovered }<br>",,
+        };
+        // Trails (lines)
+        //Abfrage JSON https://services7.arcgis.com/mOBPykOjAyBO2ZKk/arcgis/rest/services/RKI_Landkreisdaten/FeatureServer/0/query?outFields=*&where=1%3D1
+
+        const rendererLandkreise = {
+          type: "simple", // autocasts as new SimpleRenderer()
+          symbol: defaultSym,
+          label: "Landkreise nach Fälle 7 Tage/100K EWZ",
+          visualVariables: [
+            {
+              type: "color",
+              field: "cases7_per_100k",
+              legendOptions: {
+                title: "",
+              },
+              stops: [
+                {
+                  value: 0,
+                  //color: "#3ADF00",
+                  //color: "#81F781",
+                  color: "#BEF781",
+                  //color: "#d4ffdd",
+                },
+                {
+                  value: 51,
+                  color: "#FF0000",
+                },
+              ],
+            },
+          ],
+        };
+
+        var featureLayer = new FeatureLayer({
+          url:
+            "https://services7.arcgis.com/mOBPykOjAyBO2ZKk/arcgis/rest/services/RKI_Landkreisdaten/FeatureServer/0",
+          outFields: [
+            "BEZ",
+            "county",
+            "last_update",
+            "cases",
+            "deaths",
+            "cases_per_100k",
+            "cases_per_population",
+            "cases7_per_100k",
+          ],
+          popupTemplate: popupTrailheads,
+          renderer: rendererLandkreise,
+        });
+
+        const rendererLaender = {
+          type: "simple", // autocasts as new SimpleRenderer()
+          symbol: defaultSym2,
+        };
+
+        var featureLayer2 = new FeatureLayer({
+          url:
+            "https://services2.arcgis.com/jUpNdisbWqRpMo35/arcgis/rest/services/Deutschland_Bundesl%C3%A4nder_2017_mit_Einwohnerzahl/FeatureServer/0/query?outFields=*&where=1%3D1",
+          renderer: rendererLaender,
+        });
+
+        //Krankenhäuser kann man einblenden, wenn man möchte ist aber sehr unübersichtlich. Testet selbst
+        /*var featureLayer3 = new FeatureLayer({
+          url:
+            "https://services7.arcgis.com/mOBPykOjAyBO2ZKk/arcgis/rest/services/Krankenhaus_hospital/FeatureServer/0/query?outFields=*&where=1%3D1",
+          //renderer: rendererLaender,
+        });
+        */
+        
+        //erst 2, dann 1, weil die Grenzen der Bundesl#ndern weniger transparenz haben!
+        map.add(featureLayer2);
+        map.add(featureLayer);
+        //map.add(featureLayer3);
+
+        var activeGraphic;
+        var bufferGraphic;
+        var textGraphic;
+        var lineGraphic;
+
+        //weitere "nahe" Standorte - evtl. gut fürs smartphone
+        /*function findNearestGraphic(event) {
+          return view.hitTest(event).then(function (response) {
+            var graphic, filteredResult;
+            // Get the featureLayer graphic
+            if (response.results.length) {
+              filteredResult = response.results.filter(function (result) {
+                return result.graphic.layer === featureLayer;
+              })[0];
+            }
+            // Only return new graphics found
+            if (filteredResult) {
+              graphic = filteredResult.graphic;
+              if (
+                !activeGraphic ||
+                activeGraphic.attributes.OBJECTID !==
+                  graphic.attributes.OBJECTID
+              ) {
+                return graphic;
+              } else {
+                return null;
+              }
+            } else {
+              return null;
+            }
+          });
+        }*/
+
+        // Rundungen für Popup -- da ich aktuell nicht direkt an die Daten komme, Runde ich über umwege und über einen Button
+        function runden() {
+          var last_update = view.popup.selectedFeature.attributes.last_update;
+          var GEN = view.popup.selectedFeature.attributes.GEN;
+          var EWZ = view.popup.selectedFeature.attributes.EWZ;
+          var cases = view.popup.selectedFeature.attributes.cases;
+          var cases_per_100k =
+            view.popup.selectedFeature.attributes.cases_per_100k;
+          var cases_per_population =
+            view.popup.selectedFeature.attributes.cases_per_population;
+          var death_rate = view.popup.selectedFeature.attributes.death_rate;
+          var cases7_per_100k =
+            view.popup.selectedFeature.attributes.cases7_per_100k;
+            console.log(view.graphics);
+            console.log("featurelayer drüber");
+          cases_per_100k = parseFloat(
+            Math.round(cases_per_100k * 100) / 100
+          ).toFixed(2);
+          cases_per_population = parseFloat(
+            Math.round(cases_per_population * 100) / 100
+          ).toFixed(2);
+          death_rate = parseFloat(Math.round(death_rate * 100) / 100).toFixed(
+            2
+          );
+          cases7_per_100k = parseFloat(
+            Math.round(cases7_per_100k * 100) / 100
+          ).toFixed(2);
+          view.popup.content =
+            "<b>Aktualisiert:</b> " +
+            last_update +
+            "<br>" +
+            "<b>Bezeichnung:</b> " +
+            GEN +
+            "<br>" +
+            "<b>Einwohner:</b> " +
+            EWZ +
+            "<br>" +
+            "<b>Anzahl Fälle:</b> " +
+            cases +
+            "<br>" +
+            "<b>Fälle/100.000 EW:</b> " +
+            cases_per_100k +
+            "<br>" +
+            "<b>Betroffenenrate:</b> " +
+            cases_per_population +
+            "<br>" +
+            "<b>Sterberate:</b> " +
+            death_rate +
+            "<br>" +
+            "<b>Fälle letzten 7 Tage/100.000 EW:</b> " +
+            cases7_per_100k +
+            "<br>";
+        }
+
+        // Ewenn auf "rundungen" gedrückt, dann wird ausgeführt
+        view.popup.on("trigger-action", function (event) {
+          // Execute the measureThis() function if the measure-this action is clicked
+          runden();
+          if (event.action.id === "runden") {
+            runden();
+          }
+        });
+
+        //console.log("test" + JSON.stringify(map.featureLayer));
+      });
+    </script>
+  </head>
+  <body>
+    <div id="viewDiv"></div>
+  </body>
+</html>
