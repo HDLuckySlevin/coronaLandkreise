@@ -6,7 +6,7 @@ Farbliche darstellung:
 * kann auch nach anderen Kriterien abgestimmt werden (bsp nach Fällen pro neuen Tag oder Sterberate)
 * Farben können auch "absgestellt" werden.
 
-![Landkreise-Preview](landkreise_preview.png "Landkreise-Preview")
+![Landkreise-Preview](landkreise_preview.PNG "Landkreise-Preview")
 
 
 Die Daten werden über die ESRI-ArcGis (RKI-HUB) abgerufen. <br>
